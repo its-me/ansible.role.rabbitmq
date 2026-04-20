@@ -1,0 +1,21 @@
+---
+
+
+dependencies:
+  - role: apt
+    apt_packages: '{{ rabbitmq_required_packages }}'
+
+  - role: apt
+    apt_repo: erlang
+    apt_pin: erlang*={{ rabbitmq_erlang_version }}
+
+  - role: apt
+    apt_packages: '{{ rabbitmq_packages }}'
+    apt_repo: rabbitmq
+
+  - role: limits
+    limits_systemd:
+      - unit: rabbitmq-server
+        limits:
+        - LimitNOFILE={{ rabbitmq_limit_nofile }}
+    tags: limits

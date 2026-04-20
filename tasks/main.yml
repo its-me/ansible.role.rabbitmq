@@ -1,0 +1,105 @@
+---
+### RabbitMQ role
+
+
+## Prepare RabbitMQ service
+- block:
+  - name: add Erlang cookie for RabbitMQ in {{ rabbitmq_work_dir }}/.erlang.cookie
+    copy:
+      content: '{{ rabbitmq_erlang_cookie }}'
+      dest: '{{ rabbitmq_work_dir }}/.erlang.cookie'
+      owner: '{{ rabbitmq_user }}'
+      group: '{{ rabbitmq_group }}'
+      backup: yes
+    register: _rabbitmq_erlang_cookie
+    tags: ['cookie']
+
+  - name: add RabbitMQ environment file {{ rabbitmq_env }}
+    template:
+      src: etc/rabbitmq/rabbitmq.env.j2
+      dest: '{{ rabbitmq_env }}'
+      owner: '{{ rabbitmq_user }}'
+      group: '{{ rabbitmq_group }}'
+    register: _rabbitmq_env
+    tags: ['env']
+
+  - name: add RabbitMQ config file {{ rabbitmq_config }}
+    template:
+      src: etc/rabbitmq/rabbitmq.config.j2
+      dest: '{{ rabbitmq_config }}'
+      owner: '{{ rabbitmq_user }}'
+      group: '{{ rabbitmq_group }}'
+    register: _rabbitmq_config
+    tags: ['config']
+
+  - name: add RabbitMQ plugins {{ rabbitmq_plugins }}
+    rabbitmq_plugin:
+      names: '{{ item }}'
+      state: enabled
+    register: _rabbitmq_plugin
+    with_items: '{{ rabbitmq_plugins }}'
+    tags: ['plugin']
+
+  - name: restart RabbitMQ service
+    service:
+      name: rabbitmq-server
+      enabled: yes
+      state: restarted
+    when: _rabbitmq_plugin is changed or _rabbitmq_env is changed or _rabbitmq_config is changed or _rabbitmq_erlang_cookie is changed
+    tags: ['restart']
+
+  tags: ['prepare']
+  become: yes
+
+
+## Shorewall
+- block:
+  - name: configure shorewall
+    include_role:
+      name: shorewall
+    vars:
+      shorewall_fact: 'rabbitmq_cluster'
+      shorewall_rules: '{{ rabbitmq_shorewall }}'
+
+  tags: ['shorewall']
+
+
+
+## RabbitMQ cluster
+- block:
+  - block:
+    - name: if cluster not ready stop_app
+      raw: rabbitmqctl stop_app
+
+    - name: '{{ inventory_hostname }} join to cluster'
+      raw: rabbitmqctl join_cluster rabbit@{{ rabbitmq_cluster_master }}
+      register: _rabbitmq_cluster_init
+
+    - name: if cluster not ready start_app
+      raw: rabbitmqctl start_app
+      when: _rabbitmq_cluster_init is changed and _rabbitmq_cluster_init.rc == 0
+
+    when: not rabbitmq_cluster_ready and inventory_hostname != rabbitmq_cluster_master
+
+  - name: set fact rabbitmq_cluster ready
+    import_role:
+      name: facts
+    vars:
+      facts: { cluster_ready: True }
+      facts_name: rabbitmq
+    when: inventory_hostname == rabbitmq_cluster_master or (_rabbitmq_cluster_init is changed and _rabbitmq_cluster_init.rc == 0)
+
+  - name: set HA policy
+    rabbitmq_policy:
+      name: HA
+      node: rabbit@{{ rabbitmq_cluster_master }}
+      pattern: .*
+      tags:
+        ha-mode: all
+        ha-sync-mode: automatic
+    run_once: True
+    when: rabbitmq_cluster_ready
+    tags: init:policy
+
+  become: yes
+  tags: ['init']

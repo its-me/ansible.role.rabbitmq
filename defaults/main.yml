@@ -1,0 +1,80 @@
+---
+# RabbitMQ default variables
+
+
+rabbitmq_user: rabbitmq
+rabbitmq_group: rabbitmq
+
+rabbitmq_version: 3.6.12-*
+rabbitmq_erlang_version: 1:19.2.1+*
+rabbitmq_erlang_cookie: STQOZHBTMREMFCPJEWQZ
+
+rabbitmq_packages: rabbitmq-server={{ rabbitmq_version }}
+rabbitmq_required_packages: python-requests
+
+rabbitmq_plugins: rabbitmq_management
+
+rabbitmq_log_dir: /var/log/rabbitmq
+rabbitmq_work_dir: /var/lib/rabbitmq
+
+rabbitmq_config_dir: /etc/rabbitmq
+rabbitmq_config_file: rabbitmq.conf
+rabbitmq_config: '{{ rabbitmq_config_dir }}/{{ rabbitmq_config_file }}'
+rabbitmq_env_file: rabbitmq-env.conf
+rabbitmq_env: '{{ rabbitmq_config_dir }}/{{ rabbitmq_env_file }}'
+
+rabbitmq_env__use_longname: True
+rabbitmq_env__log_base: '{{ rabbitmq_log_dir }}'
+rabbitmq_env__node_name: rabbit@{{ inventory_hostname }}
+#rabbitmq_env__node_ip
+#rabbitmq_env__node_port
+
+rabbitmq_log_level: info
+
+rabbitmq_log_file: True
+rabbitmq_log_file_level: '{{ rabbitmq_log_level }}'
+
+rabbitmq_log_console: False
+rabbitmq_log_console_level: '{{ rabbitmq_log_level }}'
+
+rabbitmq_log_syslog: False
+rabbitmq_log_syslog_identity: rabbitmq
+rabbitmq_log_syslog_facility: local2
+rabbitmq_log_syslog_level: '{{ rabbitmq_log_level }}'
+
+rabbitmq_limit_nofile: 65536
+
+## Networking
+rabbotmq_reverse_dns_lookups: False
+
+rabbitmq_tcp_port: 5672
+rabbitmq_tcp_acceptors: 10
+
+rabbitmq_ssl: False
+#rabbitmq_ssl_port: 5671
+#rabbitmq_ssl_acceptors: 1
+#rabbitmq_ssl_ca: /path/to/ssl.ca
+#rabbitmq_ssl_cert: /path/to/ssl.cert
+#rabbitmq_ssl_key: /path/to/ssl.key
+#rabbitmq_ssl_verify: verify_peer
+#rabbitmq_ssl_fail_if_no_peer_cert: False
+
+rabbitmq_heatbeat: 600
+rabbitmq_frame_max: 131072
+rabbitmq_channel_max: 128
+
+
+## Clustering
+rabbitmq_cluster_partition_handling: pause_minority
+
+rabbitmq_cluster_keepalive: 10000
+rabbitmq_cluster_nodes_type: disk
+rabbitmq_cluster_master: '{{ groups["rabbitmq_cluster"][0] }}'
+
+rabbitmq_cluster_ready: '{{ ansible_local.rabbitmq.cluster_ready
+  if (ansible_local.rabbitmq|d() and ansible_local.rabbitmq.cluster_ready|d() and ansible_local.rabbitmq.cluster_ready|bool)
+  else False }}'
+
+rabbitmq_shorewall:
+  - 'Permit access from AnsibleGroups(rabbitmq) to 4369,{{ rabbitmq_tcp_port }},25672 ports'
+  - { source: net, source_groups: rabbitmq_cluster, dest: fw, dest_port: '4369,{{ rabbitmq_tcp_port }},25672', action: ACCEPT, proto: tcp }
